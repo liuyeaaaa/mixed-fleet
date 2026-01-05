@@ -12,6 +12,9 @@ class ActionMask:
         self.H, self.W = grid_shape
         self.charge_stations = set(charge_stations)
         self.fuel_stations = set(fuel_stations)
+        # 额外的约束可在运行时注入，例如高需求区域优先
+        self.allowed_zones = None
+        self.demand_threshold = None
 
         self.atomic = AtomicAction(num_zones)
 
@@ -20,7 +23,8 @@ class ActionMask:
         vehicle_type,      # "AET", "HET", "HGT"
         vehicle_zone,      # 当前所在 zone id
         vehicle_energy,    # SOC or fuel
-        vehicle_status     # 0: idle, 1: busy
+        vehicle_status,    # 0: idle, 1: busy
+        demand_matrix=None # 可选的需求矩阵，用于限制 GOTO
     ):
         """
         返回 shape = [action_size] 的 0/1 mask
@@ -35,7 +39,13 @@ class ActionMask:
         # ---------- 2. GOTO_ZONE ----------
         # 能量必须 > 0
         if vehicle_energy > 0 and vehicle_status == 0:
-            for zone in range(self.num_zones):
+            allowed = range(self.num_zones) if self.allowed_zones is None else self.allowed_zones
+            # 若提供了需求矩阵且设置阈值，则只允许需求高于阈值的区域
+            if demand_matrix is not None and self.demand_threshold is not None:
+                demand_flat = demand_matrix.flatten()
+                allowed = [z for z in allowed if demand_flat[z] >= self.demand_threshold]
+
+            for zone in allowed:
                 action_id = self.atomic.GOTO_START + zone
                 mask[action_id] = 1
 
